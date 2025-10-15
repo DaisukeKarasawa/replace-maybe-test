@@ -48,18 +48,18 @@ chosen   = fromMaybe "stranger" $                   -- String
 
 狙い: 与えられたトークン列を数値に変換して合計。
 
-- strict: 1つでも不正があれば全体を失敗に（`Nothing`）
+- strict: 1つでも不正があれば `Either` で理由を保持して失敗（例: "invalid number: x"）
 - lenient: 不正トークンは落として合計
 
 最小抜粋:
 
 ```haskell
--- strict
-case traverse readMaybe tokens of
-  Just xs -> print (sum xs)
-  Nothing -> putStrLn "Error ..."
+-- strict (Either)
+case traverse readEitherInt tokens of
+  Right xs -> print (sum xs)
+  Left err -> putStrLn ("Error: " ++ err)
 
--- lenient
+-- lenient (Maybe)
 let xs = mapMaybe readMaybe tokens in print (sum xs)
 ```
 
@@ -89,24 +89,32 @@ putStrLn (maybe "Empty file" id mFirst)
 
 ---
 
-## email: 二段階 lookup とフォールバック
+## email: 二段階 lookup とフォールバック（原因の区別）
 
 狙い: `name -> userId -> email` を安全に段階解決。大文字小文字の差異も許容（フォールバック）。
 
 最小抜粋:
 
 ```haskell
-uid   = lookup name userIdByName
-     <|> lookup (map toLower name) userIdByNameLower
-email = uid >>= (\u -> lookup u emailById)
-putStrLn (fromMaybe "not found" email)
+data EmailErr = NoSuchUser | EmailMissing
+
+lookupEmail :: String -> Either EmailErr String
+lookupEmail name = do
+  uid <- maybe (Left NoSuchUser) Right
+         (lookup name userIdByName <|> lookup (map toLower name) userIdByNameLower)
+  maybe (Left EmailMissing) Right (lookup uid emailById)
+
+case lookupEmail name of
+  Right e -> putStrLn e
+  Left NoSuchUser   -> putStrLn "Error: user not found"
+  Left EmailMissing -> putStrLn "Error: email not registered"
 ```
 
 性質/考え方:
 
 - `(>>=)` で段階的に失敗を伝播（どこかが失敗したら全体 `Nothing`）
 - `<|>` で別の検索戦略（小文字化）にフォールバック
-- 最終出力は `fromMaybe` で人間向けメッセージ
+- 失敗原因は `Either` で保持し、ユーザーに分かるメッセージを出し分け
 
 ---
 

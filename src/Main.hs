@@ -41,19 +41,19 @@ cmdGreet args = do
       out      = (if yell then map toUpper else id) ("Hello, " ++ chosen ++ "!")
   putStrLn out
 
+-- Keep strict parsing failures with a reason
+readEitherInt :: String -> Either String Int
+readEitherInt s = maybe (Left ("invalid number: " ++ s)) Right (readMaybe s)
+
 cmdSum :: [String] -> IO ()
 cmdSum args = do
   let isFlag s = "--" `isPrefixOf` s
       strict   = any (== "--strict") args
       tokens   = [a | a <- args, not (isFlag a)]
   if strict
-    then case traverse (readMaybe :: String -> Maybe Int) tokens of
-      Just xs -> print (sum xs)
-      Nothing ->
-        let invalids = [t | t <- tokens, (readMaybe t :: Maybe Int) == Nothing]
-        in putStrLn $ case listToMaybe invalids of
-             Just bad -> "Error: invalid number: " ++ bad
-             Nothing  -> "Error: invalid input"
+    then case traverse readEitherInt tokens of
+      Right xs -> print (sum xs)
+      Left err -> putStrLn ("Error: " ++ err)
     else do
       let xs = mapMaybe (readMaybe :: String -> Maybe Int) tokens
       print (sum xs)
@@ -64,12 +64,21 @@ cmdHead fp = do
   let mFirst = listToMaybe (lines content)
   putStrLn (maybe "Empty file" id mFirst)
 
-cmdEmail :: String -> IO ()
-cmdEmail name = do
-  let userIdByName      = [("alice", 1 :: Int), ("bob", 2)]
+-- Distinguish user-not-found vs email-missing
+data EmailErr = NoSuchUser | EmailMissing deriving (Show)
+
+lookupEmail :: String -> Either EmailErr String
+lookupEmail name = do
+  let userIdByName      = [("alice", 1 :: Int), ("bob", 2), ("daisuke", 3)]
       userIdByNameLower = [(map toLower k, v) | (k, v) <- userIdByName]
       emailById         = [(1, "alice@example.com"), (2, "bob@example.com")]
-      uid               = lookup name userIdByName
-                       <|> lookup (map toLower name) userIdByNameLower
-      email             = uid >>= (\u -> lookup u emailById)
-  putStrLn (fromMaybe "not found" email)
+  uid <- maybe (Left NoSuchUser) Right
+         (lookup name userIdByName <|> lookup (map toLower name) userIdByNameLower)
+  maybe (Left EmailMissing) Right (lookup uid emailById)
+
+cmdEmail :: String -> IO ()
+cmdEmail name = do
+  case lookupEmail name of
+    Right e -> putStrLn e
+    Left NoSuchUser   -> putStrLn "Error: user not found"
+    Left EmailMissing -> putStrLn "Error: email not registered"

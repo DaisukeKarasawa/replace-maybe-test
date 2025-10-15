@@ -40,7 +40,7 @@ stack run -- sum [--strict|--lenient] <nums...>
 
 - `--strict`: 1つでも不正なトークンがあるとエラー
 - `--lenient`(デフォルト): 不正トークンはスキップして合計
-- 内部での Maybe 活用: `traverse readMaybe`(strict), `mapMaybe readMaybe`(lenient), `maybe`
+- 内部でのエラー扱い: strict は `Either`（`traverse readEitherInt`）で理由を保持、lenient は `mapMaybe readMaybe`、表示は `Error: ...`
 
 例:
 
@@ -72,7 +72,7 @@ stack run -- email <name>
 ```
 
 - 名前からメールを2段階で検索（name→id→email）
-- 内部での Maybe 活用: `lookup` 合成、`(>>=)`, `<|>` によるフォールバック
+- 内部でのエラー扱い: `Either EmailErr` で「ユーザー不在」と「メール未登録」を区別し、メッセージを出し分け
 
 例:
 

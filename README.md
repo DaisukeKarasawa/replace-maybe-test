@@ -1,12 +1,6 @@
-# Maybeモナド活用パターン CLI（Stack）
+# 超簡単 CLI（内部で Maybe を活用）
 
-最小実装で Maybe モナドの“多様な活用パターン”を横断的に確認できるサンプル CLI です。21 パターンを収録し、`list`/`all`/`<id>` の3モードで出力します。
-
-## 特徴
-
-- base のみ（追加依存なし）
-- 読みやすい整形出力（各パターン: タイトル/要点/デモ）
-- 実装は小さく、パターン理解に集中
+実用的なサブコマンドを備えつつ、実装内部で `Maybe` を複数箇所に活用する最小構成の CLI です。依存は `base` のみ。
 
 ## インストール/実行
 
@@ -14,94 +8,80 @@
 # ビルド
 stack build
 
-# 収録パターン一覧
-stack run list
-
-# 全パターン連続実行
-stack run all
-
-# 単一パターン実行
-stack run basic-fmap
+# ヘルプ
+stack run --
 ```
 
-## CLI 仕様
+## コマンド一覧
 
-- `stack run list`: ID とタイトルの一覧
-- `stack run all`: 全パターンを順に実行
-- `stack run <id>`: 指定 ID のみ実行（例: `basic-fmap`）
+### greet
 
-## 収録パターン（21）
-
-- basic-fmap: `fmap`で`Just`/`Nothing`を変換
-- basic-bind: `>>=`で安全に合成
-- basic-do: do記法で段階的に失敗伝播
-- applicative-ap: `<*>`で関数コンテナを適用
-- applicative-liftA2: `liftA2`で二項関数適用
-- maybe-fn: `maybe def f m`で安全に取り出し
-- fromMaybe: デフォルト値でアンラップ
-- isJust-isNothing: 状態判定
-- maybeToList: `Maybe -> [a]`に変換
-- listToMaybe: `[]`から安全に先頭取得
-- catMaybes: `Maybe`リストから値だけ抽出
-- mapMaybe-parseInt: 失敗するパースを混ぜた変換
-- guard-even: `guard`で条件フィルタ
-- alternative-fallback: `<|>`でフォールバック
-- mfilter: 述語で`Maybe`の中身を条件フィルタ
-- safeHead: 部分関数を安全化
-- nested-lookup: `lookup`の段階的合成
-- sequence-list: `sequence [Maybe a] -> Maybe [a]`
-- traverse-parseInts: `traverse readMaybe`で一括パース
-- kleisli-compose: `(>=>)`で失敗する関数を合成
-- first-last-monoid: `First`/`Last`でモノイド結合
-
-## サンプル出力（抜粋）
-
-```text
-[#] basic-fmap - fmapで安全に写像
-  - コンテナ内の値だけ変換し、Nothingはそのまま。Functorの基本。
-
-  Demo:
-    fmap (+1) (Just 3) => Just 4
-    fmap (+1) Nothing  => Nothing
-----------------------------------------
+```
+stack run -- greet [--yell] [<name>]
 ```
 
-## 実際のソース抜粋
+- 名前が省略された場合は `$USER`、それも無ければ `stranger` を使用
+- `--yell` で大文字化
+- 内部での Maybe 活用: `lookupEnv`, `listToMaybe`, `mfilter`, `fromMaybe`
 
-### CLI のエントリポイント（`src/Main.hs`）
+例:
 
-```haskell
--- 引数で list/all/<id> を切り替える
-case args of
-  ["list"] -> listExamples
-  ["all"]  -> runAll
-  [exId]    -> runOne exId
-  _         -> putStrLn usage
+```bash
+stack run -- greet            #=> Hello, <USER or stranger>!
+stack run -- greet alice      #=> Hello, alice!
+stack run -- greet --yell bob #=> HELLO, BOB!
 ```
 
-### パターン登録の構造（`src/MaybePatterns.hs`）
+### sum
 
-```haskell
-data Example = Example
-  { exampleId :: String
-  , title     :: String
-  , explain   :: [String]
-  , runText   :: String
-  }
-
-examples :: [Example]
-examples =
-  [ Example "basic-fmap" "fmapで安全に写像"
-      ["コンテナ内の値だけ変換し、Nothingはそのまま。Functorの基本。"]
-      (unlines
-        [ "fmap (+1) (Just 3) => " ++ show (fmap (+1) (Just (3 :: Int)))
-        , "fmap (+1) Nothing  => " ++ show (fmap (+1) (Nothing :: Maybe Int))
-        ])
-  -- ... 他パターンも同様に登録
-  ]
+```
+stack run -- sum [--strict|--lenient] <nums...>
 ```
 
-## 拡張の仕方
+- `--strict`: 1つでも不正なトークンがあるとエラー
+- `--lenient`(デフォルト): 不正トークンはスキップして合計
+- 内部での Maybe 活用: `traverse readMaybe`(strict), `mapMaybe readMaybe`(lenient), `maybe`
 
-- 新しいパターンは `src/MaybePatterns.hs` の `examples` に `Example` を1件追加
-- `exampleId` は `stack run <id>` の引数に使われます
+例:
+
+```bash
+stack run -- sum 1 2 3            #=> 6
+stack run -- sum 1 2 x 3          #=> 6 (xをスキップ)
+stack run -- sum --strict 1 2 x 3 #=> Error: invalid number: x
+```
+
+### head
+
+```
+stack run -- head <file>
+```
+
+- ファイルの先頭行を出力。空ファイルは `Empty file` を表示
+- 内部での Maybe 活用: `listToMaybe`, `maybe`
+
+例:
+
+```bash
+stack run -- head README.md  #=> READMEの最初の1行
+```
+
+### email
+
+```
+stack run -- email <name>
+```
+
+- 名前からメールを2段階で検索（name→id→email）
+- 内部での Maybe 活用: `lookup` 合成、`(>>=)`, `<|>` によるフォールバック
+
+例:
+
+```bash
+stack run -- email alice  #=> alice@example.com
+stack run -- email carol  #=> not found
+```
+
+## 備考
+
+- 旧来の「Maybeパターンの一覧/デモ」機能は削除しました（Breaking change）
+- `docs/MaybePatternsDeepDive.md` は歴史的資料として残しています
